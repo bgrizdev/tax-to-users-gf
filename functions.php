@@ -51,11 +51,41 @@ function admin_main_page_content() {
         </form>
 
     </div>
-    <?php
+<?php
+    if ( isset( $_GET['complete'] ) && $_GET['complete'] === 'true' ) {
+        
+?>
+
+        <h1>HELLO WORLD</h1>
+
+<?php 
+    
+    }
 }
 
 // Hook the 'add_main_menu_item' function to the 'admin_menu' action
 add_action('admin_menu', 'add_main_menu_item');
 
 
-// 
+// Button handlers
+
+function handle_gf_button_click() {
+    if ( isset( $_POST['test_gravity_forms_nonce'] ) && wp_verify_nonce( $_POST['test_gravity_forms_nonce'], 'test_gravity_forms_action' ) ) {
+
+
+        //$firstname = sanitize_text_field( $_POST['firstname'] );
+        //$lastname = sanitize_text_field( $_POST['lastname'] );
+        //$userid = sanitize_text_field( $_POST['userid'] );
+
+        // Call the function to update Gravity Forms entries
+        //update_gravity_forms_entries( $firstname, $lastname, $userid );
+
+        // Redirect after processing to avoid resubmission
+        wp_redirect( admin_url( 'admin.php?page=create-users-assessors&complete=true' ) );
+        exit;
+    } else {
+        // Invalid nonce or unauthorized access
+        wp_die( 'Security check' );
+    }
+}
+add_action( 'admin_post_test_gravity_forms', 'handle_gf_button_click' );
