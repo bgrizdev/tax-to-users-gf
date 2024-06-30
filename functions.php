@@ -93,6 +93,28 @@ add_action('admin_menu', 'add_main_menu_item');
 
 // Button handlers
 
+function handle_create_users_button_click() {
+    // Check if the form is submitted
+    if ( isset( $_POST['create_users_from_assessors_nonce'] ) ) {
+        // Verify nonce
+
+        //error_log('button clicked');
+
+        if ( ! wp_verify_nonce( $_POST['create_users_from_assessors_nonce'], 'create_users_from_assessors_action' ) ) {
+            return;
+        }
+
+
+        // Call the function to create users
+        create_users_from_assessor_terms();
+
+        // Redirect to avoid form resubmission
+        wp_redirect( admin_url( 'admin.php?page=create-users-assessors&created=true' ) );
+        exit;
+    }
+}
+add_action( 'admin_post_create_users_from_assessors', 'handle_create_users_button_click' );
+
 function handle_gf_button_click() {
     if ( isset( $_POST['test_gravity_forms_nonce'] ) && wp_verify_nonce( $_POST['test_gravity_forms_nonce'], 'test_gravity_forms_action' ) ) {
 
@@ -134,3 +156,85 @@ function get_gravity_forms_entries($id) {
     $entries = GFAPI::get_entries( $id );
     return $entries;
 }
+
+
+function create_users_from_assessor_terms() {
+    // Get all terms in the 'assessors' taxonomy
+    $terms = get_terms( array(
+        'taxonomy' => 'assessors',
+        'hide_empty' => false,
+    ) );
+
+    // Check if there are any terms
+    if ( !empty($terms) && !is_wp_error($terms) ) {
+        foreach ( $terms as $term ) {
+            // Get ACF fields for the term
+            $first_name = get_field('first_name', 'assessors_' . $term->term_id);
+            $last_name = get_field('last_name', 'assessors_' . $term->term_id);
+            $company_name = get_field('company_name', 'assessors_' . $term->term_id);
+            $phone_number = get_field('phone_number', 'assessors_' . $term->term_id);
+            $email_address = get_field('email_address', 'assessors_' . $term->term_id);
+
+            // Check if required fields are present
+            if ( $first_name && $last_name && $email_address ) {
+                // Use the term name as the username
+                $username = sanitize_user( $term->name );
+
+                // Check if the user already exists
+                if ( !username_exists( $username ) && !email_exists( $email_address ) ) {
+                    // Create a new user
+                    $user_id = wp_create_user( $username, wp_generate_password(), $email_address );
+
+                    // Check if the user was created successfully
+                    if ( !is_wp_error($user_id) ) {
+                        // Update user meta with additional information
+                        wp_update_user( array(
+                            'ID' => $user_id,
+                            'first_name' => $first_name,
+                            'last_name' => $last_name,
+                            'nickname' => $company_name,
+                        ) );
+
+                        // Update user meta with phone number
+                        update_user_meta( $user_id, 'phone_number', $phone_number );
+
+                        $user = new WP_User( $user_id );
+                        $user->set_role( 'assessor' );
+
+                        // Update gravity form entries with new user data
+                        update_gravity_forms_entries($first_name, $last_name, $user_id);
+                    }
+                }
+            }
+        }
+    }
+}
+
+function update_gravity_forms_entries($first_name, $last_name, $user_id) {
+
+    $form_id = 3; 
+    $criteria = array();
+    $sorting = null;
+    $paging = array( 'offset' => 0, 'page_size' => 1000 ); 
+    
+    // Fetch entries
+    $entries = GFAPI::get_entries($form_id, $criteria, $sorting, $paging);
+    
+    foreach ( $entries as $entry ) {
+        $entry_id = $entry['id'];
+        $created_by = $entry['created_by']; 
+        $form_first_name = $entry['150.3'];
+        $form_last_name = $entry['150.6'];
+
+        if($first_name == $form_first_name && $last_name == $form_last_name ) {
+
+            $entry['created_by'] = $user_id;
+            
+            $result = GFAPI::update_entry($entry);
+
+        }
+
+    }
+
+}
+
