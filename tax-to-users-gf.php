@@ -14,22 +14,31 @@ if (!defined('ABSPATH')) {
 }
 
 function tax_to_users_gf_plugin_activate() {
-    // activation code
-    // doesn't really need to do anything here
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'gf_entries_data';
+    $charset_collate = $wpdb->get_charset_collate(); 
+    $sql = "CREATE TABLE $table_name (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        gf_id mediumint(9) NOT NULL,
+        PRIMARY KEY (id)
+    ) $charset_collate;";
+    require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+    dbDelta( $sql );
 }
 register_activation_hook(__FILE__, 'tax_to_users_gf_plugin_activate');
 
 
 function tax_to_users_gf_plugin_deactivate() {
-    // deactivation code
-    // doesn't really need to do anything here either 
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'gf_entries_data';
+    $sql = "DROP TABLE IF EXISTS $table_name;";
+    $wpdb->query($sql);
 }
 register_deactivation_hook(__FILE__, 'tax_to_users_gf_plugin_deactivate');
 
 function tax_to_users_gf_plugin_function() {
-    // main 
+    // main functionality 
 }
 add_action('wp_footer', 'tax_to_users_gf_plugin_function');
 
 require_once plugin_dir_path(__FILE__) . 'functions.php';
-

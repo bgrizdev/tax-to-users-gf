@@ -32,33 +32,57 @@ function admin_main_page_content() {
             ?>
         </form>
 
-        <p>The form fields below should be deleted, all this button does is return some GF data for comparison/confirmation purposes.</p>
+        <p>Add an ID for a Gravity Form to get back meta data on it for data comparison</p>
 
         <form method="post" action="<?php echo esc_url( admin_url('admin-post.php') ); ?>">
             <input type="hidden" name="action" value="test_gravity_forms">
             <?php wp_nonce_field( 'test_gravity_forms_action', 'test_gravity_forms_nonce' ); ?>
             
-            <label for="firstname">First Name:</label>
-            <input type="text" id="firstname" name="firstname" required><br><br>
-            
-            <label for="lastname">Last Name:</label>
-            <input type="text" id="lastname" name="lastname" required><br><br>
-            
-            <label for="userid">User ID:</label>
-            <input type="text" id="userid" name="userid" required><br><br>
+            <label for="gf_id">Gravity Form ID:</label>
+            <input type="number" id="gf_id" name="gf_id" required><br><br>
             
             <?php submit_button( __( 'Test Gravity Form', 'text_domain' ) ); ?>
         </form>
 
     </div>
 <?php
-    if ( isset( $_GET['complete'] ) && $_GET['complete'] === 'true' ) {
-        
-?>
+    if ( isset( $_GET['complete'] ) && $_GET['complete'] === 'true' ) {  
 
-        <h1>HELLO WORLD</h1>
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'gf_entries_data';
+        $results = $wpdb->get_results( "SELECT * FROM $table_name ORDER BY id DESC LIMIT 1", ARRAY_A );
 
-<?php 
+        if ( ! empty( $results ) ) {
+            $gf_id = $results[0]['gf_id'];
+            $gf_entries = get_gravity_forms_entries($gf_id);
+            echo '<h2>Gravity Forms Entries</h2>';
+            echo '<table>';
+            echo '<tr><th>Entry ID</th><th>User ID</th><th>First Name</th><th>Last Name</th></tr>';
+            foreach ( $gf_entries as $entry ) {
+                $entry_id = $entry['id'];
+                $user_id = $entry['created_by']; // Assuming 'created_by' is the user ID who created the entry
+                $first_name = $entry['150.3'];
+                $last_name = $entry['150.6'];
+                
+                // Replace '1' with the field ID for the name in your form
+                $name = isset( $entry[1] ) ? $entry[1] : 'N/A'; 
+
+                echo '<tr>';
+                echo '<td>' . esc_html( $entry_id ) . '</td>';
+                echo '<td>' . esc_html( $user_id ) . '</td>';
+                echo '<td>' . esc_html( $first_name ) . '</td>';
+                echo '<td>' . esc_html( $last_name ) . '</td>';
+                echo '</tr>';
+            }
+            echo '</table>';
+            ?>
+            
+            <?php
+        } else {
+            ?>
+            <h1>No Data Found</h1>
+            <?php
+        }
     
     }
 }
@@ -72,20 +96,41 @@ add_action('admin_menu', 'add_main_menu_item');
 function handle_gf_button_click() {
     if ( isset( $_POST['test_gravity_forms_nonce'] ) && wp_verify_nonce( $_POST['test_gravity_forms_nonce'], 'test_gravity_forms_action' ) ) {
 
+        $gf_id = sanitize_text_field( $_POST['gf_id'] );
 
-        //$firstname = sanitize_text_field( $_POST['firstname'] );
-        //$lastname = sanitize_text_field( $_POST['lastname'] );
-        //$userid = sanitize_text_field( $_POST['userid'] );
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'gf_entries_data';
 
-        // Call the function to update Gravity Forms entries
-        //update_gravity_forms_entries( $firstname, $lastname, $userid );
+        $row = $wpdb->get_row( "SELECT * FROM $table_name WHERE id = 1" );
 
-        // Redirect after processing to avoid resubmission
-        wp_redirect( admin_url( 'admin.php?page=create-users-assessors&complete=true' ) );
+        if ( $row ) {
+            error_log("Found a row with gf_id: " . $gf_id);
+            // Update the existing row
+            $wpdb->update(
+                $table_name,
+                array( 'gf_id' => $gf_id ),
+                array( 'id' => 1 )
+            );
+        } else {
+            error_log("Inserting a new row with gf_id: " . $gf_id);
+            // Insert a new row
+            $wpdb->insert(
+                $table_name,
+                array( 'gf_id' => $gf_id )
+            );
+        }
+
+        wp_redirect( admin_url( 'admin.php?page=tax-to-users-admin&complete=true' ) );
         exit;
     } else {
-        // Invalid nonce or unauthorized access
         wp_die( 'Security check' );
     }
 }
 add_action( 'admin_post_test_gravity_forms', 'handle_gf_button_click' );
+
+
+
+function get_gravity_forms_entries($id) {
+    $entries = GFAPI::get_entries( $id );
+    return $entries;
+}
