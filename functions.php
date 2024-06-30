@@ -85,6 +85,14 @@ function admin_main_page_content() {
         }
     
     }
+    if ( isset( $_GET['created'] ) && $_GET['created'] === 'true' ) {  
+
+        echo('<div class="notice notice-success is-dismissible">
+                <p>Successfully created Users from Taxonomy</p>
+        </div>');
+
+    }
+
 }
 
 // Hook the 'add_main_menu_item' function to the 'admin_menu' action
@@ -109,7 +117,7 @@ function handle_create_users_button_click() {
         create_users_from_assessor_terms();
 
         // Redirect to avoid form resubmission
-        wp_redirect( admin_url( 'admin.php?page=create-users-assessors&created=true' ) );
+        wp_redirect( admin_url( 'admin.php?page=tax-to-users-admin&created=true' ) );
         exit;
     }
 }
@@ -126,7 +134,6 @@ function handle_gf_button_click() {
         $row = $wpdb->get_row( "SELECT * FROM $table_name WHERE id = 1" );
 
         if ( $row ) {
-            error_log("Found a row with gf_id: " . $gf_id);
             // Update the existing row
             $wpdb->update(
                 $table_name,
@@ -134,7 +141,6 @@ function handle_gf_button_click() {
                 array( 'id' => 1 )
             );
         } else {
-            error_log("Inserting a new row with gf_id: " . $gf_id);
             // Insert a new row
             $wpdb->insert(
                 $table_name,
@@ -237,4 +243,3 @@ function update_gravity_forms_entries($first_name, $last_name, $user_id) {
     }
 
 }
-
