@@ -24,13 +24,15 @@ function admin_main_page_content() {
         <p>The new users will be created as Accessors which a Custom User Role Defined in the theme.</p>
         <p>Each Piece of Taxonomy is associated with Gravity Forms entries, during the creation process the entries are checked based on the name field and compared to the name of the newly created user.</p>
         <p>If a match is identified then the entry's created_by field will be updated to reflect the value of the newly created user_id.</p>
-        <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
+        <form id="create-users-form" method="post" action="#">
             <input type="hidden" name="action" value="create_users_from_assessors">
             <?php
-            wp_nonce_field( 'create_users_from_assessors_action', 'create_users_from_assessors_nonce' );
-            submit_button( __( 'Create Users', 'text_domain' ) );
+            wp_nonce_field('create_users_from_assessors_action', 'create_users_from_assessors_nonce');
+            submit_button(__('Create Users', 'text_domain'), 'primary', 'create-users-button');
             ?>
         </form>
+
+        <div id="batch-status">Processing batch number: 0</div>
 
         <p>Add an ID for a Gravity Form to get back meta data on it for data comparison</p>
 
@@ -243,3 +245,96 @@ function update_gravity_forms_entries($first_name, $last_name, $user_id) {
     }
 
 }
+
+function create_users_from_assessor_terms_batch($batch_number = 0) {
+    $batch_size = 10; 
+    $offset = $batch_number * $batch_size;
+
+    // Get terms in the 'assessors' taxonomy with offset and limit for batching
+    $terms = get_terms( array(
+        'taxonomy' => 'assessors',
+        'hide_empty' => false,
+        'number' => $batch_size,
+        'offset' => $offset,
+    ) );
+
+    // Process terms
+    if ( !empty($terms) && !is_wp_error($terms) ) {
+        foreach ( $terms as $term ) {
+            // Get ACF fields for the term
+            $first_name = get_field('first_name', 'assessors_' . $term->term_id);
+            $last_name = get_field('last_name', 'assessors_' . $term->term_id);
+            $company_name = get_field('company_name', 'assessors_' . $term->term_id);
+            $phone_number = get_field('phone_number', 'assessors_' . $term->term_id);
+            $email_address = get_field('email_address', 'assessors_' . $term->term_id);
+
+            // Check if required fields are present
+            if ( $first_name && $last_name && $email_address ) {
+                // Use the term name as the username
+                $username = sanitize_user( $term->name );
+
+                // Check if the user already exists
+                if ( !username_exists( $username ) && !email_exists( $email_address ) ) {
+                    // Create a new user
+                    $user_id = wp_create_user( $username, wp_generate_password(), $email_address );
+
+                    // Check if the user was created successfully
+                    if ( !is_wp_error($user_id) ) {
+                        // Update user meta with additional information
+                        wp_update_user( array(
+                            'ID' => $user_id,
+                            'first_name' => $first_name,
+                            'last_name' => $last_name,
+                            'nickname' => $company_name,
+                        ) );
+
+                        // Update user meta with phone number
+                        update_user_meta( $user_id, 'phone_number', $phone_number );
+
+                        $user = new WP_User( $user_id );
+                        $user->set_role( 'assessor' );
+
+                        // Update gravity form entries with new user data
+                        update_gravity_forms_entries($first_name, $last_name, $user_id);
+                    }
+                }
+            }
+        }
+
+        // Check if there are more terms to process
+        if ( count($terms) == $batch_size ) {
+            return true; 
+        }
+    }
+
+    return false; 
+}
+
+
+function handle_ajax_create_users() {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'create_users_from_assessors_action')) {
+        wp_send_json_error('Invalid nonce');
+        return;
+    }
+
+    $batch_number = isset($_POST['batch_number']) ? intval($_POST['batch_number']) : 0;
+
+    $has_more_batches = create_users_from_assessor_terms_batch($batch_number);
+
+    wp_send_json_success(array('has_more_batches' => $has_more_batches, 'batch_number' => $batch_number + 1));
+}
+
+add_action('wp_ajax_create_users_batch', 'handle_ajax_create_users');
+
+
+function enqueue_batch_processing_script() {
+    wp_enqueue_script('batch-processing-script', plugin_dir_url(__FILE__) . 'batch-processing.js', array('jquery'), null, true);
+    wp_localize_script('batch-processing-script', 'batchProcessingData', array(
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce' => wp_create_nonce('create_users_from_assessors_action'),
+        'redirect_url' => admin_url('admin.php?page=tax-to-users-admin&created=true'),
+    ));
+}
+
+add_action('admin_enqueue_scripts', 'enqueue_batch_processing_script');
+
